@@ -289,6 +289,29 @@
   .field input:focus, .field select:focus, .field textarea:focus{border-color:var(--brass);}
   .field .err-msg{font-size:11px;color:var(--err);min-height:14px;}
   .field.invalid input, .field.invalid select{border-color:var(--err);}
+  .ms{position:relative;}
+  .ms-btn{
+    width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;
+    background:#0d0e10;border:1px solid var(--line);color:var(--ink);
+    padding:11px 12px;font-size:14px;border-radius:var(--radius-s);font-family:inherit;cursor:pointer;
+    transition:border-color .15s;
+  }
+  .ms-btn:focus, .ms.open .ms-btn{border-color:var(--brass);outline:none;}
+  .ms-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ms-text.placeholder{color:var(--ink-faint);}
+  .ms-caret{color:var(--ink-dim);flex:none;}
+  .ms-panel{
+    position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;
+    background:#0d0e10;border:1px solid var(--brass-dim);border-radius:var(--radius-s);
+    max-height:280px;overflow-y:auto;box-shadow:0 10px 28px rgba(0,0,0,.55);
+  }
+  .ms-panel[hidden]{display:none;}
+  .ms-opt{display:flex;align-items:center;gap:10px;padding:11px 14px;font-size:14px;color:var(--ink);cursor:pointer;border-bottom:1px solid var(--line-soft);}
+  .ms-opt:last-child{border-bottom:none;}
+  .ms-opt:hover{background:#17181c;}
+  .ms-opt input{accent-color:var(--brass);width:16px;height:16px;flex:none;margin:0;}
+  .ms-other{margin-top:8px;}
+  .field.invalid .ms-btn{border-color:var(--err);}
 
   .sign-block{margin-top:30px;border-top:1px solid var(--line);padding-top:26px;}
   .sign-title{font-size:14px;color:var(--ink);margin-bottom:4px;font-weight:500;}
@@ -463,6 +486,19 @@
               <input type="date" name="birthdate" placeholder="請選擇出生年月日">
               <div class="err-msg"></div>
             </div>
+            <div class="field full" data-field="referral">
+              <label>請問您是如何認識我們的？（可複選）<span class="req">*</span></label>
+              <div class="ms" id="referralMs">
+                <button type="button" class="ms-btn" id="referralBtn" aria-haspopup="listbox" aria-expanded="false">
+                  <span class="ms-text" id="referralText">請選擇（可複選）</span>
+                  <span class="ms-caret">▾</span>
+                </button>
+                <div class="ms-panel" id="referralPanel" role="listbox" aria-multiselectable="true" hidden></div>
+              </div>
+              <input type="text" id="referralOther" class="ms-other" placeholder="請說明：其他認識我們的管道" style="display:none">
+              <input type="hidden" name="referral" id="referralValue">
+              <div class="err-msg"></div>
+            </div>
             <div class="field full" data-field="address">
               <label>收件地址（含郵遞區號）<span class="req">*</span></label>
               <input type="text" name="address" placeholder="例如 833 高雄市鳥松區美山路77巷5號">
@@ -511,7 +547,7 @@
     </section>
   </main>
 
-  <footer class="appfoot">© PERSEIDAS ENTERPRISE CO., LTD.｜本頁面為 VIP 客戶專屬報價工具，內容請勿對外流通｜版本 20261005-e</footer>
+  <footer class="appfoot">© PERSEIDAS ENTERPRISE CO., LTD.｜本頁面為 VIP 客戶專屬報價工具，內容請勿對外流通｜版本 20261005-f</footer>
 </div>
 
 <!-- 送出成功 modal -->
@@ -902,7 +938,7 @@
     if(headerLogoEl) headerLogoEl.src = IMG_LOGO_HEADER;
     var lineQrEl = document.getElementById("lineQrImg");
     if(lineQrEl) lineQrEl.src = IMG_LINE_QR;
-    [renderSections, initCategoryNav, bindCalculator, initSignPad, bindForm].forEach(function(fn){
+    [renderSections, initCategoryNav, bindCalculator, initSignPad, initReferral, bindForm].forEach(function(fn){
       try { fn(); } catch(err){ console.error("初始化失敗：", err); }
     });
     updateQuote();
@@ -1301,7 +1337,81 @@
   /* =========================================================
      7. 表單驗證與送出
   ========================================================= */
-  var REQUIRED_FIELDS = ["name","venue","phone","email","address"];
+  var REFERRAL_OPTIONS = [
+    "親友、教練或同事介紹","Instagram","Facebook","LINE 官方帳號","展覽","賽事","網路搜尋",
+    "GOOGLE 地圖搜尋","健身房推薦","學校推薦","公司推薦","合作單位推薦","其他"
+  ];
+  var REFERRAL_OTHER = "其他";
+
+  // 目前勾選的選項與「其他」說明
+  function referralState(){
+    var panel = document.getElementById("referralPanel");
+    var picked = [];
+    panel.querySelectorAll("input[type=checkbox]:checked").forEach(function(cb){ picked.push(cb.value); });
+    var otherText = (document.getElementById("referralOther").value || "").trim();
+    return { picked: picked, otherChecked: picked.indexOf(REFERRAL_OTHER) !== -1, otherText: otherText };
+  }
+
+  function syncReferral(){
+    var st = referralState();
+    var other = document.getElementById("referralOther");
+    other.style.display = st.otherChecked ? "" : "none";
+
+    // 送出的內容：「其他」改成「其他：說明文字」；沒填說明就先不算（送出時會提示）
+    var parts = [];
+    st.picked.forEach(function(v){
+      if(v === REFERRAL_OTHER){ if(st.otherText) parts.push("其他：" + st.otherText); }
+      else parts.push(v);
+    });
+    document.getElementById("referralValue").value = parts.join("、");
+
+    var txt = document.getElementById("referralText");
+    if(st.picked.length === 0){
+      txt.textContent = "請選擇（可複選）";
+      txt.classList.add("placeholder");
+    } else {
+      txt.textContent = "已選 " + st.picked.length + " 項：" + st.picked.join("、");
+      txt.classList.remove("placeholder");
+    }
+    if(st.picked.length > 0 && (!st.otherChecked || st.otherText)) clearFieldError("referral");
+  }
+
+  function initReferral(){
+    var btn = document.getElementById("referralBtn");
+    var panel = document.getElementById("referralPanel");
+    var wrap = document.getElementById("referralMs");
+    var other = document.getElementById("referralOther");
+    if(!btn || !panel) return;
+
+    REFERRAL_OPTIONS.forEach(function(label){
+      var row = document.createElement("label");
+      row.className = "ms-opt";
+      row.setAttribute("role", "option");
+      var cb = document.createElement("input");
+      cb.type = "checkbox"; cb.value = label;
+      cb.addEventListener("change", function(){
+        syncReferral();
+        if(label === REFERRAL_OTHER && cb.checked){ other.focus(); }
+      });
+      var sp = document.createElement("span");
+      sp.textContent = (label === REFERRAL_OTHER) ? "其他（請說明）" : label;
+      row.appendChild(cb); row.appendChild(sp);
+      panel.appendChild(row);
+    });
+
+    function setOpen(open){
+      panel.hidden = !open;
+      wrap.classList.toggle("open", open);
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    btn.addEventListener("click", function(){ setOpen(panel.hidden); });
+    document.addEventListener("click", function(e){ if(!wrap.contains(e.target)) setOpen(false); });
+    document.addEventListener("keydown", function(e){ if(e.key === "Escape") setOpen(false); });
+    other.addEventListener("input", syncReferral);
+    syncReferral();
+  }
+
+  var REQUIRED_FIELDS = ["name","venue","phone","email","address","referral"];
 
   function fieldEl(name){ return document.querySelector('.field[data-field="'+name+'"]'); }
   function setFieldError(name, msg){
@@ -1347,6 +1457,12 @@
     });
     if(data.email && !isValidEmail(data.email)){
       setFieldError("email", "Email 格式不正確"); valid = false;
+    }
+    var refSt = referralState();
+    if(refSt.picked.length === 0){
+      setFieldError("referral", "請至少選擇一項"); valid = false;
+    } else if(refSt.otherChecked && !refSt.otherText){
+      setFieldError("referral", "請填寫「其他」的說明"); valid = false;
     }
 
     var quote = updateQuote();
@@ -1419,7 +1535,7 @@
       subtotal: quote.subtotal,
       taxIncluded: false,
       shippingIncluded: false,
-      note: "本金額未稅、未含運費；正式報價以業務簽核書面報價單為準。",
+      note: "本金額未稅、未含運費、搬運費、施工費；正式報價以業務簽核書面報價單為準。",
       signatureDataUrl: signCanvas.toDataURL("image/png"),
       agreedToTerms: true,
       token: sessionStorage.getItem("victory_vip_token") || ""
