@@ -421,7 +421,7 @@
         <span class="count"></span>
       </div>
       <div class="form-wrap">
-        <form id="orderForm" novalidate>
+        <form id="orderForm" novalidate action="javascript:void(0)" onsubmit="return false;">
           <div class="form-grid">
             <div class="field" data-field="name">
               <label>姓名<span class="req">*</span></label>
@@ -504,7 +504,7 @@
     </section>
   </main>
 
-  <footer class="appfoot">© PERSEIDAS ENTERPRISE CO., LTD.｜本頁面為 VIP 客戶專屬報價工具，內容請勿對外流通</footer>
+  <footer class="appfoot">© PERSEIDAS ENTERPRISE CO., LTD.｜本頁面為 VIP 客戶專屬報價工具，內容請勿對外流通｜版本 20261005-b</footer>
 </div>
 
 <!-- 送出成功 modal -->
@@ -867,11 +867,9 @@
     if(headerLogoEl) headerLogoEl.src = IMG_LOGO_HEADER;
     var lineQrEl = document.getElementById("lineQrImg");
     if(lineQrEl) lineQrEl.src = IMG_LINE_QR;
-    renderSections();
-    initCategoryNav();
-    bindCalculator();
-    initSignPad();
-    bindForm();
+    [renderSections, initCategoryNav, bindCalculator, initSignPad, bindForm].forEach(function(fn){
+      try { fn(); } catch(err){ console.error("初始化失敗：", err); }
+    });
     updateQuote();
   }
 
@@ -1118,6 +1116,12 @@
       qtyEl.value = q;
       card.classList.toggle("active", q > 0);
       lineEl.textContent = fmtMoney(q * item.price);
+      if(item.singleColor){
+        // 數量為 0 時隱藏顏色選單；數量大於 0 才出現並為必選
+        var cf = card.querySelector(".color-fields");
+        if(cf) cf.style.display = q > 0 ? "" : "none";
+        if(q <= 0 && item._colorEls){ item._colorEls.colWrap.classList.remove("invalid"); }
+      }
     }
     function setQty(newQty){
       newQty = Math.max(0, Math.floor(newQty) || 0);
