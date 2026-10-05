@@ -504,7 +504,7 @@
     </section>
   </main>
 
-  <footer class="appfoot">© PERSEIDAS ENTERPRISE CO., LTD.｜本頁面為 VIP 客戶專屬報價工具，內容請勿對外流通｜版本 20261005-b</footer>
+  <footer class="appfoot">© PERSEIDAS ENTERPRISE CO., LTD.｜本頁面為 VIP 客戶專屬報價工具，內容請勿對外流通｜版本 20261005-d</footer>
 </div>
 
 <!-- 送出成功 modal -->
@@ -533,7 +533,7 @@
   /* =========================================================
      0. 基本設定
   ========================================================= */
-  var PASSWORD = "VICTORY2026"; // 可自行更換 VIP 通行密碼
+  // 通行密碼改由 Google Apps Script 後端驗證（每組一次性密碼），不再寫在網頁裡
 
   // 請將下方網址換成您自己部署的 Google Apps Script Web App 網址
   // （部署方式請見本頁最下方「Google Apps Script 部署與測試說明」）
@@ -828,17 +828,48 @@
   var gateError = document.getElementById("gateError");
   var gateCard = document.getElementById("gateCard");
 
+  var loginBusy = false;
+  function showGateError(msg){
+    gateError.textContent = msg;
+    gateCard.classList.remove("shake");
+    void gateCard.offsetWidth;
+    gateCard.classList.add("shake");
+  }
   function tryLogin(){
+    if(loginBusy) return;
     var val = (pwInput.value || "").trim();
-    if(val === PASSWORD){
-      sessionStorage.setItem("victory_vip_auth", "1");
-      openApp();
-    } else {
-      gateError.textContent = "密碼錯誤，請確認後再試一次";
-      gateCard.classList.remove("shake");
-      void gateCard.offsetWidth;
-      gateCard.classList.add("shake");
-    }
+    if(!val){ showGateError("請輸入通行密碼"); return; }
+
+    loginBusy = true;
+    var oldText = gateBtn.textContent;
+    gateBtn.disabled = true;
+    gateBtn.textContent = "驗證中…";
+    gateError.textContent = "";
+
+    fetch(GAS_WEB_APP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "verifyCode", code: val })
+    })
+      .then(function(res){ return res.json(); })
+      .then(function(result){
+        if(result && result.success === true && result.token){
+          sessionStorage.setItem("victory_vip_auth", "1");
+          sessionStorage.setItem("victory_vip_token", result.token);
+          openApp();
+        } else {
+          showGateError((result && result.error) || "密碼錯誤，請確認後再試一次");
+        }
+      })
+      .catch(function(err){
+        console.error("密碼驗證失敗：", err);
+        showGateError("目前無法連線驗證，請檢查網路後再試一次");
+      })
+      .then(function(){
+        loginBusy = false;
+        gateBtn.disabled = false;
+        gateBtn.textContent = oldText;
+      });
   }
   function openApp(){
     gate.style.display = "none";
@@ -851,10 +882,10 @@
   document.getElementById("logoutLink").addEventListener("click", function(e){
     e.preventDefault();
     sessionStorage.removeItem("victory_vip_auth");
+    sessionStorage.removeItem("victory_vip_token");
     location.reload();
   });
 
-  if(sessionStorage.getItem("victory_vip_auth") === "1"){ openApp(); }
 
   /* =========================================================
      3. 建立商品區塊與卡片
@@ -1385,7 +1416,8 @@
       shippingIncluded: false,
       note: "本金額未稅、未含運費；正式報價以業務簽核書面報價單為準。",
       signatureDataUrl: signCanvas.toDataURL("image/png"),
-      agreedToTerms: true
+      agreedToTerms: true,
+      token: sessionStorage.getItem("victory_vip_token") || ""
     };
 
     // ---------------------------------------------------------
@@ -1411,6 +1443,13 @@
       .then(function(result){
         submitBtn.disabled = false;
         submitBtn.textContent = originalBtnText;
+        if(result && result.success !== true && /登入已失效/.test(result.error || "")){
+          alert("登入已失效，請重新向業務索取新的密碼並重新登入。");
+          sessionStorage.removeItem("victory_vip_auth");
+          sessionStorage.removeItem("victory_vip_token");
+          location.reload();
+          return;
+        }
         if(!result || result.success !== true){
           throw new Error((result && result.error) || "伺服器回傳失敗");
         }
@@ -1428,6 +1467,9 @@
   document.getElementById("modalCloseBtn").addEventListener("click", function(){
     document.getElementById("confirmModal").classList.remove("on");
   });
+
+  // 還原登入狀態：必須放在整份程式的最後面，等所有變數與函式都準備好才啟動
+  if(sessionStorage.getItem("victory_vip_auth") === "1" && sessionStorage.getItem("victory_vip_token")){ openApp(); }
 
 })();
 </script>
